@@ -24,4 +24,4 @@ This code is originally based on a Fortran95 Code developed by my coworker Dirk 
 ### Additional Sources
 
 - [1] Scheutjens, J. M. H. M., Fleer, G. J., J. Phys. Chem. 1979, 83, 1619−1635 *[J. Phys. Chem. 1979, 83, 1619−1635](https://dx.doi.org/10.1021/j100475a012)*
-- [2] Fleer, G. J., Cohen Stuart, M. A., Scheutjens, J. M. H. M., Cosgrove, T., Vincent, B. "Polymers at Interfaces", Chapman and Hall: London, 1993
+- [2] Fleer, G. J., Cohen Stuart, M. A., Scheutjens, J. M. H. M., Cosgrove, T., Vincent, B. *["Polymers at Interfaces", Chapman and Hall: London, 1993](https://www.springer.com/gp/book/9780412581601)*
