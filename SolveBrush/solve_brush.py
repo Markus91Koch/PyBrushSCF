@@ -218,7 +218,6 @@ sigma_werte=[0.300]
 #d_werte=[0.00]
 d_werte=np.arange(0.0,145.0,step=0.5)
 print(d_werte)
-#exit()
 
 
 for u, Ns in enumerate(Ns_werte):
@@ -227,7 +226,6 @@ for u, Ns in enumerate(Ns_werte):
 
             print(Ns, sigma, d)
             wall = -float(2*d)  # wall adsorption (dont know why i doubled d here)
-            #sig = int(100.0*sigma+0.5)
             Nz = Ns+3           # size of lattice
             tmax = 300          # max. number of iterations
             epsi = 0.00001      # Abbruchbedingung der Schleife 
@@ -244,7 +242,6 @@ for u, Ns in enumerate(Ns_werte):
             #phi=np.zeros(Ns+1)
             varV=np.zeros((Ns+1,Ns+1))
             cen=np.zeros(Ns+1)
-            #cen2=np.zeros(Ns+1)
             jacob=np.zeros((Ns,Ns))
             func=np.zeros(Ns)
             F=np.zeros((Ns,Ns+1))
@@ -259,47 +256,46 @@ for u, Ns in enumerate(Ns_werte):
 
             for t in range(tmax):
                 print("Iteration-Nr. %d" % t)
-
-                V0 += float(int(np.log10(norm1)/150.0))    # da norm1=1.0 ist das hier also erst einmal NULL // Pot addieren wenn Werte zu klein werden
-                #for h in range(Ns+1):                     # create potential from varied densities
-                #    for j in range(1,Ns+1):                 # Warum bei dieser Bedingung cen(j) variieren und nur erhoehen
-                #        if h==j:
-                #            varV[h,j]= np.exp(-1.*(Vakt(cen[j]+epsi,float(chi)/10.0)+V0))     # Pot variieren, cen(j) -> concentration of monomers
-                #        else:
-                #            varV[h,j]= np.exp(-1*(Vakt(cen[j],float(chi)/10.0)+V0))          # index j ist Ort, cen[j] darf nicht >= 1 werden, sonst nan
-                #for (h,j), x in np.ndenumerate(varV):    
-                #    if h==j:
-                #        varV[h,j]= np.exp(-1.*(Vakt(cen[j]+epsi,float(chi)/10.0)+V0))
-                #    else:
-                #        varV[h,j]= np.exp(-1.*(Vakt(cen[j],float(chi)/10.0)+V0))
                 
+                # in beginning norm1=1.0, so this is zero; add to potential is values are too small
+                V0 += float(int(np.log10(norm1)/150.0))
+                
+                # create potential from varied densities, cen[j] -> concentration of monomers
+                # 2nd index is spatial pos., cen[j] should not be >= 1, otherwise nan
+                # vary potential on diagonal, 
                 for h in range(Ns+1):
                     varV[h,1:Ns+1] = np.exp(-1.*(Vakt(cen[1:Ns+1],float(chi)/10.0)+V0))
                     varV[h,h] = np.exp(-1.*(Vakt(cen[h]+epsi,float(chi)/10.0)+V0))
 
-                #F=np.zeros((Ns,Ns+1))
                 F.fill(0)
 
                 for h in range(Ns+1):
+                    
+                    # reset all greens functions to zero before new run
                     G1.fill(0)
                     G2.fill(0)
                     Gtot.fill(0)
                     
-                    G1[0,1]=float(1)                   # calculate forward Gs ; an der Wand ist G1 fuer alle Gitterpkte = 1 (alle gegraftet)
-                    #for n in range(1,Ns):               # Monomere starten bei wand aber erstes mon wird als null gezählt in der laenge der kette
-                    #    for j in range(1,n+2):
-                    #        G1[n,j] = w1*(G1[n-1,j-1]+G1[n-1,j+1])+w0*G1[n-1,j]       # S. 111 Polymers at Interfaces
-                    #        G1[n,j] *= varV[h,j] #np.exp(-varV[h,j])
+                    # first, calculate forward G, i.e. G1
+                    # wall is at 0, so monomers can only be at 1,2,3...
+                    # boundary condition: at wall G1 = 1 for first monomer (grafting)
+                    G1[0,1]=float(1)
                     
+                    # calculate full G1 from forward moving condition
+                    # pg. 111 Polymers at Interfaces
                     for n in range(1,Ns):
                         G1[n,1:n+2] = w1*(G1[n-1,:n+1]+G1[n-1,2:n+3])+w0*G1[n-1,1:n+2]
                         G1[n,1:n+2] *= varV[h,1:n+2]                
-                    #G1[1:Ns,1:n+2] = w1*(G1[:Ns-1,:n+1]+G1[:Ns-1,2:n+3])+w0*G1[:Ns-1,1:n+2]
 
-                    G1[Ns-1,1] *= np.exp(-wall)             # additional potential at surface, belohnung energetisch, letztes Monomer ist an Wand
+                    # apply additiponal potential at surface (attractive)
+                    # end-modification =  only if terminal monomer (Ns-1) is at wall (1)
+                    G1[Ns-1,1] *= np.exp(-wall)
 
-                    norm1 = np.sum(G1[Ns-1,:])         # norm1 = Summe aller Wahrsch. fuer das letzte Monomer  (aufsummieren fuer alle Orte z)
-                    norm = sigma/norm1                 # anschlussbedingung fuer die G2, zusammen ergibt dann G1*G2 bei Ns-1 wieder sigma
+                    # norm1 = sum of all probabilities for the terminal monomer (sum over position)
+                    # connection condition for backward G (=G2) 
+                    # together, G1*G2 comes out to be sigma (grafting density)
+                    norm1 = np.sum(G1[Ns-1,:])
+                    norm = sigma/norm1
 
                     #for k in range(1,Ns+1):                     # initial values for backward Gs Green function rueckw erzeugen
                     #    G2[Ns-1,k] = norm * varV[h,k] #np.exp(-varV[h,k]) 
