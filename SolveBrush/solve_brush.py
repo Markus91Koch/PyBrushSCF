@@ -236,10 +236,13 @@ for u, Ns in enumerate(Ns_werte):
             V0 = 0.0
             chi = 0.0
             
-            G1=np.zeros((Ns,Ns+2))
-            G2=np.zeros((Ns,Ns+2))
-            Gtot=np.zeros((Ns,Ns+1))
+            # greens functions
+            #G1 - forward, G2 - backward, Gtot = full
+            G1 = np.zeros((Ns,Ns+2))
+            G2 = np.zeros((Ns,Ns+2))
+            Gtot = np.zeros((Ns,Ns+1))
             #phi=np.zeros(Ns+1)
+
             varV=np.zeros((Ns+1,Ns+1))
             cen=np.zeros(Ns+1)
             jacob=np.zeros((Ns,Ns))
@@ -254,21 +257,25 @@ for u, Ns in enumerate(Ns_werte):
 
             #endmon_wand=np.zeros((N_anz,d_anz))
 
+            # outer loop of iterative method
             for t in range(tmax):
                 print("Iteration-Nr. %d" % t)
                 
-                # in beginning norm1=1.0, so this is zero; add to potential is values are too small
+                # in beginning norm1 = 1.0, so this is zero
+                #add on top of potential if its values are too small
                 V0 += float(int(np.log10(norm1)/150.0))
                 
-                # create potential from varied densities, cen[j] -> concentration of monomers
+                # create potential from varied densities, cen[j] = old concentration of monomers
                 # 2nd index is spatial pos., cen[j] should not be >= 1, otherwise nan
-                # vary potential on diagonal, 
+                # vary potential on diagonal
                 for h in range(Ns+1):
                     varV[h,1:Ns+1] = np.exp(-1.*(Vakt(cen[1:Ns+1],float(chi)/10.0)+V0))
                     varV[h,h] = np.exp(-1.*(Vakt(cen[h]+epsi,float(chi)/10.0)+V0))
 
+                # set matrix elements to zero 
                 F.fill(0)
 
+                # inner loop
                 for h in range(Ns+1):
                     
                     # reset all greens functions to zero before new run
@@ -282,7 +289,9 @@ for u, Ns in enumerate(Ns_werte):
                     G1[0,1]=float(1)
                     
                     # calculate full G1 from forward moving condition
-                    # pg. 111 Polymers at Interfaces
+                    # connects previous steps with step probabilities
+                    # and exposure to potential V
+                    # (pg. 111, Polymers at Interfaces)
                     for n in range(1,Ns):
                         G1[n,1:n+2] = w1*(G1[n-1,:n+1]+G1[n-1,2:n+3])+w0*G1[n-1,1:n+2]
                         G1[n,1:n+2] *= varV[h,1:n+2]                
@@ -294,113 +303,99 @@ for u, Ns in enumerate(Ns_werte):
                     # norm1 = sum of all probabilities for the terminal monomer (sum over position)
                     # connection condition for backward G (=G2) 
                     # together, G1*G2 comes out to be sigma (grafting density)
+                    # norm = normation in grafting density units
                     norm1 = np.sum(G1[Ns-1,:])
                     norm = sigma/norm1
 
-                    #for k in range(1,Ns+1):                     # initial values for backward Gs Green function rueckw erzeugen
-                    #    G2[Ns-1,k] = norm * varV[h,k] #np.exp(-varV[h,k]) 
-                    #for k, value in G2[Ns-1,1:Ns]:
-                    #    G2[Ns-1,k] = norm * varV[h,k]                    
+                    # G2 (backwards propagating) begins with terminal monomer
+                    # set inital values of G2
+                    # if at wall, gain of adsorption energy
                     G2[Ns-1,1:Ns+1] = norm*varV[h,1:Ns+1]
+                    G2[Ns-1,1] *= np.exp(-wall)
                     
-                    G2[Ns-1,1] *= np.exp(-wall)                     # letztes Monomer, falls an Wand (Adsorptioneenergie gewonnen)
-                                        
-                    #for n in range(Ns-1):
-                    #    #for j in range(1,Ns+1):                         # calculate backwards Gs
-                    #    for j in range(1,Ns-n):
-                    #        G2[Ns-2-n,j] = w1*(G2[Ns-1-n,j-1]+G2[Ns-1-n,j+1])+w0*G2[Ns-1-n,j]
-                    #        G2[Ns-2-n,j] *= varV[h,j] #np.exp(-varV[h,j])
-
+                    # calculate all remaining values of G2 (from last to first monomer)
+                    # monomer k can only reach up to position k (no need to calculate pos. j for k if j>k)
                     for n in range(Ns-1):
                         G2[Ns-2-n,1:Ns-n] = w1*(G2[Ns-1-n,:Ns-n-1]+G2[Ns-1-n,2:Ns-n+1])+w0*G2[Ns-1-n,1:Ns-n]
                         G2[Ns-2-n,1:Ns-n] *= varV[h,1:Ns-n]
-                    #G2[Ns-2-n,1:Ns+1] *= varV[h,1:Ns+1]
-                    #for n in range(Ns-1):
-                    #    for j in range(1,Ns+1):
-                    #        G2[Ns-2-n,j] *= varV[h,j]
                 
+                    # obtain full Gtot by multiplication of G1*G2
+                    # (see Polymers at Interfaces for equation)
                     Gtot = np.multiply(G1,G2)
-#                    for n in range(Ns):
-#                        #for k in range(1,Ns+1):
-#                        #    Gtot[n,k] /= varV[h,k]
-#                        Gtot[n,1:Ns+1] /= varV[h,1:Ns+1]
                     Gtot[:Ns,1:Ns+1] /= varV[h,1:Ns+1] 
                    
-                    Gtot[Ns-1,1] *= np.exp(wall)       # faktor exp(-wall) kommt durch die beiden Gs 1x zu oft vor daher wieder rausmultiplizieren
+                    # energy gain at all appears twice (in G1 and G2)
+                    # it has to be eliminated once to get the correct Gtot
+                    Gtot[Ns-1,1] *= np.exp(wall)
 
+                    # generate matrix elements of A for Ax=b
+                    # A = jacobi matrix (1st derivative at old positions)
+                    # b = function value at old position
+                    # x = difference old to new position
+                    # Solution x will be stored in func (is on input b and on output x)
+                    # sum over segment index s
+                    # this gives density phi(z) under premise that there is some fluctuation for the h-entries
+                    # new density minus old to see the difference (cen[j] contains the old values of phi(z)) 
                     for j in range(1,Ns+1):
-                    #    #for n in range(Ns):
-                    #    #    F[j-1,h] += Gtot[n,j]     # generate matrix elements Ax=b
                         F[j-1,h] += np.sum(Gtot[:Ns,j]) - cen[j]
-                        #if j == h:
-                        #    F[j-1,h] += -(cen[j]+epsi) # Summiere ueber Monomernummer s -> Dichte phi(z) unter Praemisse dass an h gewackelt wurde
-                        #else:
-                        #    F[j-1,h] += -cen[j]        # neue dichte minus alte um Aenderung sehen zu koennen cen[j] - alte Werte von phi(z)
                         if j == h:
                             F[j-1,h] -= epsi
-                    #F[:Ns,h] += np.sum(Gtot[:Ns,1:Ns+1], axis=0) - cen[:Ns]                                        
-                    ####mydiag=np.diag(F,1)
-                    ####mydiag.setflags(write=True)    
-                    ####mydiag.fill(-epsi)
-                    #for j in range(1,Ns+1):
-                    #    if j == h:
-                    #        F[h-1,h] -= epsi
-                # ende der schleife ueber h
-                # mehrdimensionales Newton-Raphson-Verfahren, suche Nullstelle -> versuchen zu verstehen
-                # hier: jacob*x = func
-                # d.h. wir suchen die Nullstelle von -func = -F(j)(0)
+
+                # here, inner loop over h is ending
+                # for iterative method we have to move towards self-consistent solution!
+                # next, use multidimensional Newton-Raphson method to find root of matrix equation
+                # here: jacob * x = func
+                # we search the root of -func = -F[j][0]
+                    
+                # first column of F is target vector b: Ax = b
+                # why this F with this index? => it is the unchanged one (no epsi subtracted)
+                # func[j] = Difference between Gtot[j+1] and cen[j] (new and old)
+                # CAREFUL: now the spatial coordinate is shifted (such that arry begins at 0)
                 
-                # VORSICHT MIT CALL BY REFERENCE!!!!!
-                #for j in range(Ns):             # first column is target vector b: Ax=b
-                #    func[j] = F[j,0]           # warum gerade das F mit diesem Index? Ungewackeltes!
-                #    #func[j]= Differenz zwischen Gtot[j+1] und cen[j] wobei j hier die Ortskoordinate ist (verschoben sodass das array bei 0 beginnt)
-                #func = copy.deepcopy(F[:,0])    
+                # CAREFUL: Python uses call by reference
+                # make a separate copy of cen in memory
                 func[:Ns] = F[:Ns,0] 
                 cen2 = copy.deepcopy(cen)
 
-                #for j in range(Ns):
-                #    for h in range(1,Ns+1):                             # generate jacobian matrix
-                #        jacob[j,h-1] = (F[j,h]-F[j,0])/epsi          # Jacobimatrix- Ableitungen
-                #        # entspricht: jacob[j,h-1]=(F[j,h]-func[j])/epsi
+                # generate jacobian matrix (matrix of first derivatives with resp. to x)
                 for j in range(Ns):
                     jacob[j,:Ns] = (F[j,1:Ns+1]-F[j,0])/epsi    
-                
+    
+                # solve matrix equation Ax=b 
+                # store solution again in func (on input, func=b, on output func=x)
                 x = np.linalg.solve(jacob, func)
                 func = copy.deepcopy(x)
-                #matrixsolve(&jacob[0,0],&func[0],Ns,1);
-                # A=jacobimatrix(erste ableitung an alter Stelle), b=funktionswert an alter Stelle, x=differenz alter zur neuen Stelle
-                # Loesung x wird in Variable func geschrieben //func ist bei input B und bei output X
 
-                #myhelp=0.0;
-                #for j in range(Ns):
-                #    myhelp+=abs(func[j])           # myhelp is a parameter that is a measure for convergence
-                #print(func)
-                myhelp=np.sum(np.absolute(func)) # SYNTAX UEBERPRUEFEN
-                myhelp*=1.5
-                alpha=1.0/(myhelp+1.5)              # a control parameter to prevent overshoots in the updating process
+                # parameter myhelp is a measure for convergence
+                # parameter a is control parameter to prevent overshoots during updating
+                myhelp = np.sum(np.absolute(func))
+                myhelp *= 1.5
+                alpha = 1.0/(myhelp+1.5)
 
-                #for j in range(1,Ns+1):                     # ACHUNG func ist jetzt die Lösung x der obigen Matrixgleichung Ax=b!!! 
-                #    if (cen[j] - alpha*func[j-1] <=1.0):    # Dichten > 1 verhindern -> VarV wird wegen log(1-chi) sonst not a number!!
-                #        cen[j] += -alpha*func[j-1]          # calculate new density field // Neue cen ist altes minus kleine Korrektur x aus Ax=b
-                #        if (cen[j] <= 0.0):
-                #            cen[j]=abs(cen[j])              # ensure positive densities
-                
+                # next, calculate new density field
+                # avoid densities > 1, otherwise VarV will become nan becuase of log(1-chi)
+                # ensure positive densities at the same time
+                # reminder: func is now solution x of above matrix equation
+
                 cen[cen <= 1.0 + alpha*np.roll(np.append(func,[0]),1)] += -alpha*np.roll(np.append(func,[0]),1)
                 cen[cen < 0.] = np.abs(cen[cen < 0.])
-                cen[0]=0.
+                cen[0] = 0.
         
-                norm=np.sum(cen)
-                print("momentares myhelp: %f" % myhelp)
+                norm = np.sum(cen)
+                print("momentary myhelp: %f" % myhelp)
         
-                if myhelp < 0.00001:                         # abbruch der iteration wenn help klein genug ist
+                # Stop iteration if myhelp is sufficiently small
+                if myhelp < 0.00001:
                     print("Iteration break.")
-                    print("momentares myhelp: %f" % myhelp)            
-                    print("momentare Iteration: %d" % t)
+                    print("momentary myhelp: %f" % myhelp)            
+                    print("momentary iteration: %d" % t)
+            
+                    # write brush profile to file
                     write_oldformat("./", "b", Ns, Ns, sigma, wall, cen, Gtot, V0, norm, 1)
-                    # write also adsorption ...
-                    # 
+
+                    # write also adsorption curves?
                     break
-            # ende der großen schleife ueber t
+            # here, outer loop over t is ending
 
 
     #phi=np.sum(Gtot, axis=0)        
